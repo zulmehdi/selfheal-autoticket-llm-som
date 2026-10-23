@@ -239,3 +239,72 @@ include placeholders rather than credentials if you create one.
 
 Keep source code, runbooks, `pyproject.toml`, `uv.lock`, and `.python-version`
 versioned so other developers can reproduce the project setup.
+
+## Mock-ticket tutorial extension (local only)
+
+The baseline workflow above remains the default. This branch adds an **opt-in**,
+stdlib-only `FakeJiraAdapter` for a runnable tutorial companion. It has local
+in-memory records only, emits synthetic keys such as `SIM-1`, and uses
+`https://jira.example.invalid/...`; it reads no Jira credential and makes no
+network request. It is not a Jira Cloud adapter and it does not create, update,
+transition, resolve, or close Jira issues. The original internal simulation
+status remains separate from the mock ticket's explicitly named local lifecycle.
+A successful static Engineer/Tester path means only
+`SIMULATED_VALIDATED_LOCAL_ONLY`, not recovery, a Jira workflow transition, or a
+production closure.
+
+```powershell
+# Existing baseline: unchanged and has no external effect.
+uv run python main.py --offline --count 6 --no-color
+
+# Opt-in local mock record; fake mode uses no credential.
+uv run python main.py --offline --count 1 --no-color --ticket-adapter fake-jira
+
+# Safe deterministic teaching paths. These never contact Jira.
+uv run python main.py --offline --ticket-adapter fake-jira --fake-ticket-failure validation
+uv run python main.py --offline --ticket-adapter fake-jira --fake-ticket-failure create
+uv run python main.py --offline --ticket-adapter fake-jira --fake-ticket-failure create-timeout
+uv run python main.py --offline --ticket-adapter fake-jira --fake-ticket-failure engineer
+uv run python main.py --offline --ticket-adapter fake-jira --fake-ticket-failure tester
+uv run python main.py --offline --ticket-adapter fake-jira --fake-ticket-failure unknown
+```
+
+The responder validates a report, calls `architect.decide`, then generates a
+stable external correlation ID before creating a fake ticket. The ticket retains
+incident ID, observations, impact, runbook category/priority/steps, and the
+simulation marker. `Engineer` remains a workflow role: the optional deterministic
+fixture is explicitly a fake assignee value, never an account ID. The mock stores
+assignment, remediation, and validation comments locally. An injected ambiguous
+create timeout reconciles that same in-memory ticket by correlation, so it does
+not add a duplicate.
+
+System One's typed `Choice` reports a selected category plus confidence in model
+mode. It is a structured classification signal, not proof that the category,
+plan, or any simulated outcome is correct.
+
+See `docs/mock-ticket-console-transcript.md`,
+`docs/incident-workflow-architecture.html`, and `docs/verification.md` for the
+captured local evidence and scope boundary.
+
+### Future Jira Cloud boundary — documentation only
+
+There is intentionally no live implementation in this repository. A future,
+separately reviewed Jira Cloud integration should first obtain project issue-type
+metadata with `GET /rest/api/3/issue/createmeta/{projectIdOrKey}/issuetypes`,
+then its fields with
+`GET /rest/api/3/issue/createmeta/{projectIdOrKey}/issuetypes/{issueTypeId}`;
+do not use the deprecated broad createmeta guidance. It would create with
+`POST /rest/api/3/issue`, derive fields and allowed priority from that metadata,
+and encode descriptions/comments as ADF. An assignee requires an `accountId`.
+It would discover transition IDs at `GET .../transitions` before applying a
+returned transition ID; a 201 create yields `id`, `key`, and `self`.
+
+For a future ambiguous create timeout, persist correlation first and reconcile
+only through an administrator-configured JQL-searchable correlation field or a
+verified target-specific method. An issue property alone has no generally
+documented property-search endpoint; this is not generic idempotency. Basic
+email plus API token is appropriate only for a simple script; a distributable
+integration should use OAuth 2.0 (3LO). These future notes do **not** authorize
+or implement endpoints, credentials, or network traffic here.
+
+Primary references: [issues](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/), [comments](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-comments/), [ADF](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/), [rate limiting](https://developer.atlassian.com/cloud/jira/platform/rate-limiting/), [issue properties](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-properties/), [issue search](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-search/), [basic auth](https://developer.atlassian.com/cloud/jira/platform/basic-auth-for-rest-apis/), and [OAuth 2.0 (3LO)](https://developer.atlassian.com/cloud/jira/platform/oauth-2-3lo-apps/).
